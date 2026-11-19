@@ -1,0 +1,177 @@
+generator client {
+  provider      = "prisma-client-js"
+  binaryTargets = ["native", "linux-musl-openssl-3.0.x", "linux-musl-arm64-openssl-3.0.x"]
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  ADMIN
+  MEMBER
+}
+
+model User {
+  id             String           @id @default(cuid())
+  name           String
+  email          String           @unique
+  passwordHash   String
+  role           Role             @default(MEMBER)
+  createdAt      DateTime         @default(now())
+  /// Naik setiap ganti password / logout semua perangkat → semua sesi lama tidak berlaku.
+  sessionVersion Int              @default(0)
+  /// 2FA login aplikasi (TOTP). Secret terenkripsi AES-GCM.
+  totpSecretEnc  String?
+  totpPendingEnc String?
+  totpEnabledAt  DateTime?
+  /// JSON array hash SHA-256 dari recovery code yang belum dipakai.
+  recoveryCodes  String?
+  auditLogs      AuditLog[]
+  hostings       Hosting[]
+  vpses          Vps[]
+  domains        Domain[]
+  emails         EmailAccount[]
+  backlinks      BacklinkOrder[]
+  categories     DomainCategory[]
+}
+
+model Hosting {
+  id          String    @id @default(cuid())
+  ownerId     String
+  owner       User      @relation(fields: [ownerId], references: [id], onDelete: Restrict)
+  label       String
+  provider    String?
+  panelUrl    String?
+  username    String?
+  passwordEnc String?
+  expiresAt   DateTime?
+  notes       String?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  domains     Domain[]
+
+  @@index([ownerId])
+}
+
+model Vps {
+  id          String    @id @default(cuid())
+  ownerId     String
+  owner       User      @relation(fields: [ownerId], references: [id], onDelete: Restrict)
+  label       String
+  provider    String?
+  ip          String?
+  sshPort     Int?      @default(22)
+  username    String?
+  passwordEnc String?
+  panelUrl    String?
+  expiresAt   DateTime?
+  notes       String?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  domains     Domain[]
+
+  @@index([ownerId])
+}
+
+model Domain {
+  id               String          @id @default(cuid())
+  ownerId          String
+  owner            User            @relation(fields: [ownerId], references: [id], onDelete: Restrict)
+  name             String
+  registrar        String?
+  registrarAccount String?
+  expiresAt        DateTime?
+  status           String          @default("ACTIVE")
+  redirectTo       String?
+  redirectType     String?
+  categoryId       String?
+  category         DomainCategory? @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  hostingId        String?
+  hosting          Hosting?        @relation(fields: [hostingId], references: [id], onDelete: SetNull)
+  vpsId            String?
+  vps              Vps?            @relation(fields: [vpsId], references: [id], onDelete: SetNull)
+  notes            String?
+  createdAt        DateTime        @default(now())
+  updatedAt        DateTime        @updatedAt
+  backlinkOrders   BacklinkOrder[]
+
+  @@unique([ownerId, name])
+  @@index([categoryId])
+}
+
+/// Kategori domain milik masing-masing user (mis. "Money site kesehatan", "PBN slot").
+model DomainCategory {
+  id        String   @id @default(cuid())
+  ownerId   String
+  owner     User     @relation(fields: [ownerId], references: [id], onDelete: Restrict)
+  name      String
+  createdAt DateTime @default(now())
+  domains   Domain[]
+
+  @@unique([ownerId, name])
+}
+
+model EmailAccount {
+  id             String   @id @default(cuid())
+  ownerId        String
+  owner          User     @relation(fields: [ownerId], references: [id], onDelete: Restrict)
+  email          String
+  provider       String?
+  passwordEnc    String?
+  recoveryEmail  String?
+  totpSecretEnc  String?
+  backupCodesEnc String?
+  notes          String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@index([ownerId])
+}
+
+model BacklinkOrder {
+  id          String         @id @default(cuid())
+  ownerId     String
+  owner       User           @relation(fields: [ownerId], references: [id], onDelete: Restrict)
+  vendor      String
+  type        String         @default("BLOGPOST")
+  quantity    Int
+  price       Int?
+  purchasedAt DateTime?
+  domainId    String?
+  domain      Domain?        @relation(fields: [domainId], references: [id], onDelete: SetNull)
+  targetUrl   String?
+  anchorText  String?
+  status      String         @default("PROCESS")
+  notes       String?
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
+  items       BacklinkItem[]
+
+  @@index([ownerId])
+}
+
+model BacklinkItem {
+  id        String        @id @default(cuid())
+  orderId   String
+  order     BacklinkOrder @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  url       String
+  status    String        @default("LIVE")
+  createdAt DateTime      @default(now())
+
+  @@index([orderId])
+}
+
+model AuditLog {
+  id        String   @id @default(cuid())
+  userId    String?
+  user      User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+  action    String
+  entity    String
+  entityId  String?
+  detail    String?
+  createdAt DateTime @default(now())
+
+  @@index([createdAt])
+}

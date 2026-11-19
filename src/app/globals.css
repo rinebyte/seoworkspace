@@ -1,26 +1,116 @@
 @import "tailwindcss";
 
+/* ===== Design tokens — monokrom (zinc). Warna hanya untuk sinyal kecil: dot status. ===== */
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
-}
-
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  --bg: #fafafa;
+  --panel: #ffffff;
+  --subtle: #f4f4f5;
+  --hover: #f1f1f3;
+  --fg: #09090b;
+  --muted: #71717a;
+  --faint: #a1a1aa;
+  --line: #e4e4e7;
+  --line-strong: #d4d4d8;
+  --primary: #18181b;
+  --primary-fg: #fafafa;
+  --danger: #dc2626;
+  --warn: #d97706;
+  --ok: #16a34a;
+  color-scheme: light;
 }
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
+    --bg: #09090b;
+    --panel: #111113;
+    --subtle: #18181b;
+    --hover: #1f1f23;
+    --fg: #fafafa;
+    --muted: #a1a1aa;
+    --faint: #71717a;
+    --line: #27272a;
+    --line-strong: #3f3f46;
+    --primary: #fafafa;
+    --primary-fg: #09090b;
+    --danger: #f87171;
+    --warn: #fbbf24;
+    --ok: #4ade80;
+    color-scheme: dark;
   }
 }
 
+@theme inline {
+  --color-bg: var(--bg);
+  --color-panel: var(--panel);
+  --color-subtle: var(--subtle);
+  --color-hover: var(--hover);
+  --color-fg: var(--fg);
+  --color-muted: var(--muted);
+  --color-faint: var(--faint);
+  --color-line: var(--line);
+  --color-line-strong: var(--line-strong);
+  --color-primary: var(--primary);
+  --color-primary-fg: var(--primary-fg);
+  --color-danger: var(--danger);
+  --color-warn: var(--warn);
+  --color-ok: var(--ok);
+  --font-sans: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
+  --font-mono: var(--font-geist-mono), ui-monospace, monospace;
+}
+
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  background: var(--bg);
+  color: var(--fg);
+  font-family: var(--font-sans);
+  font-feature-settings: "cv11", "ss01";
+}
+
+::selection { background: color-mix(in srgb, var(--fg) 15%, transparent); }
+
+/* ===== Komponen (di layer components supaya utility Tailwind bisa menimpa) ===== */
+@layer components {
+.card { @apply rounded-lg border border-line bg-panel; }
+
+.btn {
+  @apply inline-flex h-8 shrink-0 items-center justify-center gap-1.5 whitespace-nowrap rounded-md border border-line bg-panel px-3
+    text-[13px] font-medium text-fg transition-colors hover:bg-hover focus-visible:outline-none focus-visible:ring-2
+    focus-visible:ring-fg/20 disabled:pointer-events-none disabled:opacity-50;
+}
+.btn svg { @apply size-3.5 shrink-0; }
+.btn-primary { @apply border-primary bg-primary text-primary-fg hover:bg-primary/90; }
+.btn-ghost { @apply border-transparent bg-transparent text-muted hover:bg-hover hover:text-fg; }
+.btn-danger { @apply text-danger hover:bg-danger/10; }
+.btn-xs { @apply h-6 gap-1 rounded px-2 text-xs; }
+.btn-icon { @apply size-7 px-0; }
+.btn-icon.btn-xs { @apply size-6; }
+
+.input {
+  @apply h-9 w-full rounded-md border border-line bg-panel px-3 text-sm text-fg outline-none transition-colors
+    placeholder:text-faint focus:border-line-strong focus:ring-2 focus:ring-fg/10;
+}
+textarea.input { @apply h-auto py-2 leading-relaxed; }
+select.input { @apply pr-8; }
+
+.label { @apply mb-1.5 block text-[13px] font-medium text-fg; }
+.hint { @apply mt-1.5 text-xs text-muted; }
+
+.badge {
+  @apply inline-flex items-center gap-1.5 whitespace-nowrap rounded-md border border-line bg-panel px-1.5 py-0.5
+    text-[11px] font-medium text-muted;
+}
+.dot { @apply inline-block size-1.5 shrink-0 rounded-full bg-faint; }
+
+.table { @apply w-full border-separate border-spacing-0 text-left text-[13px]; }
+.table th {
+  @apply sticky top-0 z-10 h-9 border-b border-line bg-subtle px-3 text-xs font-medium whitespace-nowrap text-muted;
+}
+.table td { @apply border-b border-line px-3 py-2.5 align-middle; }
+.table tbody tr { @apply transition-colors hover:bg-hover/60; }
+.table tbody tr:last-child td { @apply border-b-0; }
+
+.kbd {
+  @apply inline-flex h-5 min-w-5 items-center justify-center rounded border border-line bg-subtle px-1 font-mono text-[10px] text-muted;
+}
+
+.skeleton { @apply animate-pulse rounded-md bg-subtle; }
 }

@@ -1,0 +1,55 @@
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: seo
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?isi POSTGRES_PASSWORD di .env}
+      POSTGRES_DB: seo
+    volumes:
+      - db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U seo -d seo"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  app:
+    build: .
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql://seo:${POSTGRES_PASSWORD}@db:5432/seo?schema=public
+      ENCRYPTION_KEY: ${ENCRYPTION_KEY:?isi ENCRYPTION_KEY di .env}
+      SESSION_SECRET: ${SESSION_SECRET:?isi SESSION_SECRET di .env}
+      COOKIE_SECURE: ${COOKIE_SECURE:-false}
+      # true = semua user wajib mengaktifkan 2FA sebelum bisa memakai aplikasi
+      REQUIRE_2FA: ${REQUIRE_2FA:-false}
+    ports:
+      # Hanya bisa diakses dari komputer ini. Ganti ke "3000:3000" kalau perlu diakses dari jaringan (pakai HTTPS!).
+      - "127.0.0.1:${APP_PORT:-3000}:3000"
+
+  # Backup otomatis ke folder ./backups (lihat scripts/backup-loop.sh).
+  backup:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      PGHOST: db
+      PGUSER: seo
+      PGDATABASE: seo
+      PGPASSWORD: ${POSTGRES_PASSWORD}
+      TZ: ${TZ:-Asia/Jakarta}
+      BACKUP_INTERVAL_HOURS: ${BACKUP_INTERVAL_HOURS:-24}
+      BACKUP_KEEP_DAYS: ${BACKUP_KEEP_DAYS:-14}
+    volumes:
+      - ./backups:/backups
+      - ./scripts/backup-loop.sh:/backup-loop.sh:ro
+    entrypoint: ["sh", "/backup-loop.sh"]
+
+volumes:
+  db-data:
