@@ -11,7 +11,7 @@ import {
   startSession, tooManyFailures,
 } from "@/lib/auth";
 import { decrypt, encrypt } from "@/lib/crypto";
-import { consumeRecoveryCode, newRecoveryCodes, newTotpSecret, verifyTotp } from "@/lib/mfa";
+import { consumeRecoveryCode, newRecoveryCodes, newTotpSecret, totpStep } from "@/lib/mfa";
 
 function err(path: string, msg: string): never {
   redirect(`${path}?error=${encodeURIComponent(msg)}`);
@@ -23,6 +23,20 @@ async function clientIp() {
 
 // Hash dummy supaya waktu respons sama saat email tidak terdaftar (mencegah tebak email).
 const DUMMY_HASH = bcrypt.hashSync("dummy-password-for-timing", 12);
+
+/**
+ * Pakai kode TOTP: valid DAN langkah waktunya lebih baru dari kode terakhir yang dipakai user ini.
+ * Update bersyarat (atomik), jadi kode yang sama tidak bisa dipakai dua kali, termasuk bila dikirim bersamaan.
+ */
+async function claimTotp(userId: string, secret: string, code: string) {
+  const step = totpStep(secret, code);
+  if (step === null) return false;
+  const r = await prisma.user.updateMany({
+    where: { id: userId, OR: [{ totpLastStep: null }, { totpLastStep: { lt: step } }] },
+    data: { totpLastStep: step },
+  });
+  return r.count === 1;
+}
 
 // ---------- Login ----------
 
@@ -59,7 +73,7 @@ export async function verifyLogin2fa(form: FormData) {
 
   const code = String(form.get("code") ?? "").trim();
   let method = "";
-  if (/^\d{6}$/.test(code.replace(/\s/g, "")) && verifyTotp(decrypt(user.totpSecretEnc!), code)) {
+  if (/^\d{6}$/.test(code.replace(/\s/g, "")) && (await claimTotp(user.id, decrypt(user.totpSecretEnc!), code))) {
     method = "kode authenticator";
   } else {
     const remaining = consumeRecoveryCode(user.recoveryCodes, code);
@@ -70,7 +84,7 @@ export async function verifyLogin2fa(form: FormData) {
   }
   if (!method) {
     await audit(user.id, "2FA_FAILED", "user", key, ip);
-    err("/login/2fa", "Kode salah atau sudah kedaluwarsa");
+    err("/login/2fa", "Kode salah, kedaluwarsa, atau sudah dipakai");
   }
   await startSession(user.id);
   await audit(user.id, "LOGIN", "user", user.id, `${ip} · ${method}`);
@@ -139,7 +153,7 @@ export async function confirm2faSetup(_prev: Confirm2faResult | null, form: Form
   const user = await prisma.user.findUniqueOrThrow({ where: { id: me.id } });
   if (!user.totpPendingEnc) return { error: "Mulai ulang pengaktifan 2FA." };
   const secret = decrypt(user.totpPendingEnc);
-  if (!verifyTotp(secret, String(form.get("code") ?? ""))) return { error: "Kode salah. Pastikan jam HP sesuai, lalu coba kode terbaru." };
+  if (!(await claimTotp(me.id, secret, String(form.get("code") ?? "")))) return { error: "Kode salah. Pastikan jam HP sesuai, lalu coba kode terbaru." };
   const { codes, stored } = newRecoveryCodes();
   await prisma.user.update({
     where: { id: me.id },
@@ -165,7 +179,9 @@ export async function cancel2faSetup() {
 async function checkPasswordAndCode(userId: string, form: FormData) {
   const user = await prisma.user.findUniqueOrThrow({ where: { id: userId } });
   if (!(await bcrypt.compare(String(form.get("password") ?? ""), user.passwordHash))) return "Password salah";
-  if (!user.totpSecretEnc || !verifyTotp(decrypt(user.totpSecretEnc), String(form.get("code") ?? ""))) return "Kode 2FA salah";
+  if (!user.totpSecretEnc || !(await claimTotp(userId, decrypt(user.totpSecretEnc), String(form.get("code") ?? "")))) {
+    return "Kode 2FA salah atau sudah dipakai. Tunggu kode berikutnya.";
+  }
   return null;
 }
 
@@ -175,7 +191,7 @@ export async function disable2fa(form: FormData) {
   if (problem) err("/account", problem);
   await prisma.user.update({
     where: { id: me.id },
-    data: { totpSecretEnc: null, totpPendingEnc: null, totpEnabledAt: null, recoveryCodes: null },
+    data: { totpSecretEnc: null, totpPendingEnc: null, totpEnabledAt: null, totpLastStep: null, recoveryCodes: null },
   });
   await audit(me.id, "2FA_DISABLED", "user", me.id);
   redirect("/account?ok=2fa-off");
@@ -229,7 +245,7 @@ export async function adminReset2fa(userId: string) {
   const admin = await requireAdmin();
   const u = await prisma.user.update({
     where: { id: userId },
-    data: { totpSecretEnc: null, totpPendingEnc: null, totpEnabledAt: null, recoveryCodes: null, sessionVersion: { increment: 1 } },
+    data: { totpSecretEnc: null, totpPendingEnc: null, totpEnabledAt: null, totpLastStep: null, recoveryCodes: null, sessionVersion: { increment: 1 } },
   });
   await audit(admin.id, "RESET_2FA", "user", userId, u.email);
   revalidatePath("/users");

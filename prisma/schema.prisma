@@ -26,6 +26,8 @@ model User {
   totpSecretEnc  String?
   totpPendingEnc String?
   totpEnabledAt  DateTime?
+  /// Langkah waktu (30 detik) kode TOTP terakhir yang dipakai → kode yang sama tidak bisa dipakai ulang.
+  totpLastStep   Int?
   /// JSON array hash SHA-256 dari recovery code yang belum dipakai.
   recoveryCodes  String?
   auditLogs      AuditLog[]

@@ -4,15 +4,24 @@ import { authenticator } from "otplib";
 import QRCode from "qrcode";
 
 // Toleransi ±1 langkah (30 detik) untuk jam HP yang sedikit meleset.
-authenticator.options = { window: 1 };
+const STEP = 30; // detik per kode
+authenticator.options = { window: 1, step: STEP };
 
 export function newTotpSecret() {
   return authenticator.generateSecret(20);
 }
 
-export function verifyTotp(secret: string, code: string) {
+/**
+ * Cek kode TOTP. Jika valid, kembalikan nomor langkah waktunya (30 detik) supaya
+ * pemanggil bisa menolak kode yang sudah pernah dipakai (anti replay). Tidak valid → null.
+ */
+export function totpStep(secret: string, code: string): number | null {
   const c = code.replace(/\s/g, "");
-  return /^\d{6}$/.test(c) && authenticator.check(c, secret);
+  if (!/^\d{6}$/.test(c)) return null;
+  const epoch = Date.now();
+  const delta = authenticator.clone({ ...authenticator.options, epoch }).checkDelta(c, secret);
+  if (delta === null) return null;
+  return Math.floor(epoch / 1000 / STEP) + delta;
 }
 
 export async function totpQrSvg(email: string, secret: string) {
